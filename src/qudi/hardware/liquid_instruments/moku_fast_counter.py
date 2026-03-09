@@ -8,8 +8,8 @@ This module implements the FastCounterInterface, allowing the Moku to be used as
 replacement for other time-tagging hardware (e.g., Swabian Instruments TimeTagger) within
 the qudi pulsed measurement toolchain.
 
-Copyright (c) 2026, RehmozAyub. See the AUTHORS.md file at the top-level directory of this
-distribution and on <https://github.com/RehmozAyub/qudi-iqo-modules/>
+Copyright (c) 2026, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
 This file is part of qudi.
 

@@ -46,6 +46,7 @@ class MokuFastCounterDummy(FastCounterInterface):
             trigger_threshold: 0.0
             trigger_edge: 'Rising'
             force_connect: True
+            gated: False
     """
 
     # Config options mapping directly to the real Moku hardware module
@@ -57,12 +58,13 @@ class MokuFastCounterDummy(FastCounterInterface):
     _trigger_threshold = ConfigOption('trigger_threshold', default=0.0, missing='info')
     _trigger_edge = ConfigOption('trigger_edge', default='Rising', missing='info')
     _force_connect = ConfigOption('force_connect', default=True, missing='info')
+    _gated = ConfigOption('gated', default=False, missing='info')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         # Internal state
-        self._statusvar = 0       # 0=unconfigured, 1=idle, 2=running, 3=paused, -1=error
+        self.statusvar = 0        # 0=unconfigured, 1=idle, 2=running, 3=paused, -1=error
         self._bin_width_s = 1e-9  # bin width in seconds
         self._record_length_s = 0 # total record length in seconds
         self._number_of_gates = 0
@@ -72,20 +74,19 @@ class MokuFastCounterDummy(FastCounterInterface):
     def on_activate(self):
         """Simulation of connecting to the Moku device."""
         self.log.info(f"Connecting to dummy Moku at {self._ip_address}...")
-        time.sleep(0.5)  # Simulate small connection delay
-        self._statusvar = 0
+        self.statusvar = 0
         self.log.info("Dummy Moku fast counter activated successfully.")
 
     def on_deactivate(self):
         """Simulation of disconnecting from the Moku device."""
         self.log.info("Dummy Moku connection released.")
-        self._statusvar = -1
+        self.statusvar = -1
 
     def get_constraints(self):
         """Retrieve hardware constraints."""
         constraints = dict()
         constraints['hardware_binwidth_list'] = [
-            1e-9, 2e-9, 4e-9, 8e-9, 10e-9, 20e-9, 50e-9, 100e-9, 200e-9, 500e-9, 1e-6,
+            7.8e-12, 1e-9, 2e-9, 4e-9, 8e-9, 10e-9, 20e-9, 50e-9, 100e-9, 200e-9, 500e-9, 1e-6,
         ]
         return constraints
 
@@ -96,20 +97,20 @@ class MokuFastCounterDummy(FastCounterInterface):
              self.log.warning(f"Requested {self._n_bins} bins, but Moku is fixed at 1024 bins. Adjusting...")
              self._n_bins = min(self._n_bins, 1024)
 
-        self._bin_width_s = bin_width_s
-        self._record_length_s = record_length_s
+        actual_binwidth = bin_width_s
+        actual_length = self._n_bins * actual_binwidth
+
+        self._bin_width_s = actual_binwidth
+        self._record_length_s = actual_length
         self._number_of_gates = number_of_gates
 
         self.log.info(
-            f'Dummy Moku configured: bin_width={bin_width_s*1e9:.1f}ns, '
-            f'record_length={record_length_s*1e6:.1f}us, '
+            f'Dummy Moku configured: bin_width={self._bin_width_s*1e9:.1f}ns, '
+            f'record_length={self._record_length_s*1e6:.1f}us, '
             f'gates={number_of_gates}'
         )
 
-        self._statusvar = 1
-
-        actual_binwidth = bin_width_s
-        actual_length = self._n_bins * actual_binwidth
+        self.statusvar = 1
 
         return actual_binwidth, actual_length, number_of_gates
 
@@ -117,7 +118,7 @@ class MokuFastCounterDummy(FastCounterInterface):
         """Start the measurement."""
         self._start_time = time.time()
         self.module_state.lock()
-        self._statusvar = 2
+        self.statusvar = 2
         self.log.debug('Dummy Moku measurement started.')
         return 0
 
@@ -125,47 +126,57 @@ class MokuFastCounterDummy(FastCounterInterface):
         """Stop the measurement."""
         if self.module_state() == 'locked':
             self.module_state.unlock()
-        self._statusvar = 1
+        self.statusvar = 1
         self.log.debug('Dummy Moku measurement stopped.')
         return 0
 
     def pause_measure(self):
         """Pause the measurement."""
         if self.module_state() == 'locked':
-            self._statusvar = 3
+            self.statusvar = 3
             self.log.debug('Dummy Moku measurement paused.')
         return 0
 
     def continue_measure(self):
         """Continue the measurement."""
         if self.module_state() == 'locked':
-            self._statusvar = 2
+            self.statusvar = 2
             self.log.debug('Dummy Moku measurement continued.')
         return 0
 
     def is_gated(self):
         """Check gated counting."""
-        return False
+        return self._gated
 
     def get_binwidth(self):
         """Returns the width of a single timebin in seconds."""
         return self._bin_width_s
 
+    def get_frequency(self):
+        """Returns frequency."""
+        return 1e6
+
     def get_data_trace(self):
         """Poll the dummy timetrace data."""
         time.sleep(0.1) # Simulate hardware polling delay
 
-        if self._statusvar != 2 and self._statusvar != 3:
+        if self.statusvar != 2 and self.statusvar != 3:
+            if self._gated:
+                return np.zeros((self._number_of_gates, self._n_bins), dtype='int64'), {'elapsed_sweeps': None, 'elapsed_time': None}
             return np.zeros(self._n_bins, dtype='int64'), {'elapsed_sweeps': None, 'elapsed_time': None}
 
         # Generate some dummy data resembling plausible timetrace data (e.g. exponential decay + noise)
         x = np.arange(self._n_bins)
         # Add basic exponential decay peak
-        decay = np.exp(-x / (self._n_bins / 10.0)) * 1000
+        decay = np.exp(-x / (max(self._n_bins, 1) / 10.0)) * 1000
         # Add baseline noise
         noise = np.random.poisson(100, size=self._n_bins)
         
         count_data = (decay + noise).astype('int64')
+
+        if self._gated:
+            count_data = np.tile(count_data, (self._number_of_gates, 1))
+            count_data += np.random.poisson(5, size=(self._number_of_gates, self._n_bins)).astype('int64')
 
         elapsed_time = None
         if self._start_time is not None:
@@ -180,4 +191,4 @@ class MokuFastCounterDummy(FastCounterInterface):
 
     def get_status(self):
         """Returns status."""
-        return self._statusvar
+        return self.statusvar

@@ -86,7 +86,7 @@ class MokuFastCounter(FastCounterInterface):
 
         # Internal state
         self._tfa = None          # TimeFrequencyAnalyzer instance
-        self._statusvar = 0       # 0=unconfigured, 1=idle, 2=running, 3=paused, -1=error
+        self.statusvar = 0       # 0=unconfigured, 1=idle, 2=running, 3=paused, -1=error
         self._bin_width_s = 1e-9  # bin width in seconds
         self._record_length_s = 0 # total record length in seconds
         self._number_of_gates = 0
@@ -105,7 +105,7 @@ class MokuFastCounter(FastCounterInterface):
             self.log.error(
                 'Could not import moku package. Install it with: pip install moku'
             )
-            self._statusvar = -1
+            self.statusvar = -1
             return
 
         try:
@@ -119,7 +119,7 @@ class MokuFastCounter(FastCounterInterface):
         except Exception:
             self.log.exception('Failed to connect to Moku device:')
             self._tfa = None
-            self._statusvar = -1
+            self.statusvar = -1
             return
 
         # Configure event detectors with user-specified settings
@@ -146,7 +146,7 @@ class MokuFastCounter(FastCounterInterface):
             )
         except Exception:
             self.log.exception('Failed to configure event detectors:')
-            self._statusvar = -1
+            self.statusvar = -1
             return
 
         # Set interpolation and interval policy defaults
@@ -159,7 +159,7 @@ class MokuFastCounter(FastCounterInterface):
         except Exception:
             self.log.exception('Failed to configure interpolation/interval policy:')
 
-        self._statusvar = 0
+        self.statusvar = 0
         self.log.info('Moku fast counter activated successfully.')
 
     def on_deactivate(self):
@@ -173,7 +173,7 @@ class MokuFastCounter(FastCounterInterface):
                 self.log.exception('Error releasing Moku connection:')
             finally:
                 self._tfa = None
-        self._statusvar = -1
+        self.statusvar = -1
 
     # ======================== FastCounterInterface Methods ========================
 
@@ -229,15 +229,12 @@ class MokuFastCounter(FastCounterInterface):
             self.log.error('Moku not connected. Cannot configure.')
             return -1
 
-        # The Moku TFA histogram has a fixed 1024 bins.
-        # bin_width = span / 1024, so span = bin_width * 1024
-        n_bins = 1024
-        histogram_span = bin_width_s * n_bins
+        # Moku TFA always uses 1024 bins
+        self._n_bins = 1024
+        histogram_span = bin_width_s * self._n_bins
 
-        # Calculate actual number of bins to match the requested record length
-        self._n_bins = int(np.rint(record_length_s / bin_width_s))
         self._bin_width_s = bin_width_s
-        self._record_length_s = record_length_s
+        self._record_length_s = histogram_span  # actual length = full span
         self._number_of_gates = number_of_gates
 
         # Configure the histogram on the Moku:
@@ -262,29 +259,23 @@ class MokuFastCounter(FastCounterInterface):
                 stop_event_id=1    # signal/click
             )
 
-            # Set acquisition mode to windowed, matching the record length
-            # This determines how long the Moku accumulates events per frame
-            window_length = max(record_length_s, 10e-3)  # minimum 10ms window
-            self._tfa.set_acquisition_mode(
-                mode='Windowed',
-                window_length=window_length
-            )
+            # Set acquisition mode to continuous
+            self._tfa.set_acquisition_mode(mode='Continuous')
 
             self.log.info(
                 f'Moku TFA configured: bin_width={bin_width_s*1e9:.1f}ns, '
                 f'span={histogram_span*1e6:.1f}us, '
-                f'record_length={record_length_s*1e6:.1f}us, '
                 f'gates={number_of_gates}'
             )
         except Exception:
             self.log.exception('Failed to configure Moku TFA:')
-            self._statusvar = -1
+            self.statusvar = -1
             return -1
 
-        self._statusvar = 1
+        self.statusvar = 1
 
-        actual_binwidth = histogram_span / n_bins
-        actual_length = self._n_bins * actual_binwidth
+        actual_binwidth = histogram_span / self._n_bins
+        actual_length = histogram_span
 
         return actual_binwidth, actual_length, number_of_gates
 
@@ -301,12 +292,12 @@ class MokuFastCounter(FastCounterInterface):
             self._tfa.clear_data()
             self._start_time = time.time()
             self.module_state.lock()
-            self._statusvar = 2
+            self.statusvar = 2
             self.log.debug('Moku TFA measurement started.')
             return 0
         except Exception:
             self.log.exception('Failed to start measurement:')
-            self._statusvar = -1
+            self.statusvar = -1
             return -1
 
     def stop_measure(self):
@@ -314,7 +305,7 @@ class MokuFastCounter(FastCounterInterface):
         """
         if self.module_state() == 'locked':
             self.module_state.unlock()
-        self._statusvar = 1
+        self.statusvar = 1
         self.log.debug('Moku TFA measurement stopped.')
         return 0
 
@@ -326,7 +317,7 @@ class MokuFastCounter(FastCounterInterface):
         in the background, but get_data_trace will return the last captured data.
         """
         if self.module_state() == 'locked':
-            self._statusvar = 3
+            self.statusvar = 3
             self.log.debug('Moku TFA measurement paused.')
         return 0
 
@@ -334,7 +325,7 @@ class MokuFastCounter(FastCounterInterface):
         """Continues the current measurement from a paused state.
         """
         if self.module_state() == 'locked':
-            self._statusvar = 2
+            self.statusvar = 2
             self.log.debug('Moku TFA measurement continued.')
         return 0
 
@@ -357,6 +348,23 @@ class MokuFastCounter(FastCounterInterface):
         """
         return self._bin_width_s
 
+    def get_frequency(self):
+        """Returns the signal frequency.
+
+        @return float: the frequency in Hz.
+        """
+        if self._tfa is None:
+            return 0.0
+        try:
+            data = self._tfa.get_data()
+            statistics = data.get('interval1', {}).get('statistics', {})
+            mean_s = statistics.get('mean', 0.0)
+            if mean_s > 0:
+                return 1.0 / mean_s
+            return 0.0
+        except Exception:
+            return 0.0
+
     def get_data_trace(self):
         """Polls the current timetrace data from the fast counter.
 
@@ -373,13 +381,18 @@ class MokuFastCounter(FastCounterInterface):
         try:
             data = self._tfa.get_data()
 
+            # Note: The exact nesting of the API response dict needs to be validated
+            # on real hardware. The paths below are based on API documentation, but
+            # actual firmware versions might structure this slightly differently.
+            # A quick print(data) during testing will confirm.
+
             # Extract histogram data from interval 1
             histogram_info = data.get('interval1', {}).get('histogram', {})
             histogram_data = histogram_info.get('data', [])
             statistics = data.get('interval1', {}).get('statistics', {})
 
-            # The Moku returns 1024 bins. We may need to pad/truncate to match
-            # the requested number of bins (self._n_bins).
+            # Defensive: handle unexpected data lengths from the API, 
+            # even though we expect exactly 1024 bins (self._n_bins).
             raw_data = np.array(histogram_data, dtype='float64')
 
             if len(raw_data) == 0:
@@ -422,4 +435,4 @@ class MokuFastCounter(FastCounterInterface):
         3 = paused
        -1 = error state
         """
-        return self._statusvar
+        return self.statusvar

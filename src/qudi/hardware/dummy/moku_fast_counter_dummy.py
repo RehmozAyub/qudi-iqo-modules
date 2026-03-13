@@ -154,7 +154,7 @@ class MokuFastCounterDummy(FastCounterInterface):
 
     def get_frequency(self):
         """Returns frequency."""
-        return 1e6
+        return 1e6 # dummy frequency
 
     def get_data_trace(self):
         """Poll the dummy timetrace data."""

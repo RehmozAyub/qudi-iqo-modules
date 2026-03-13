@@ -103,7 +103,9 @@ class MokuFastCounter(FastCounterInterface):
             from moku.instruments import TimeFrequencyAnalyzer
         except ImportError:
             self.log.error(
-                'Could not import moku package. Install it with: pip install moku'
+                'Could not import moku package. Install it with: pip install moku. '
+                'The Moku Command Line Utility (mokucli) is also required and can be '
+                'downloaded from https://liquidinstruments.com/software/utilities/'
             )
             self.statusvar = -1
             return
@@ -227,7 +229,7 @@ class MokuFastCounter(FastCounterInterface):
         """
         if self._tfa is None:
             self.log.error('Moku not connected. Cannot configure.')
-            return -1
+            return self._bin_width_s, self._record_length_s, self._number_of_gates
 
         # Moku TFA always uses 1024 bins
         self._n_bins = 1024
@@ -270,7 +272,7 @@ class MokuFastCounter(FastCounterInterface):
         except Exception:
             self.log.exception('Failed to configure Moku TFA:')
             self.statusvar = -1
-            return -1
+            return self._bin_width_s, self._record_length_s, self._number_of_gates
 
         self.statusvar = 1
 
@@ -381,7 +383,7 @@ class MokuFastCounter(FastCounterInterface):
         try:
             data = self._tfa.get_data()
 
-            # Note: The exact nesting of the API response dict needs to be validated
+            # TODO: The exact nesting of the API response dict needs to be validated
             # on real hardware. The paths below are based on API documentation, but
             # actual firmware versions might structure this slightly differently.
             # A quick print(data) during testing will confirm.

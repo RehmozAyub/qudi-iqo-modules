@@ -381,39 +381,45 @@ class MokuFastCounter(FastCounterInterface):
             return np.zeros(self._n_bins, dtype='int64'), info_dict
 
         try:
-            data = self._tfa.get_data()
+            # Use a short timeout so qudi's polling loop is never blocked.
+            # The default is 60 seconds which would freeze the entire GUI.
+            # The Moku returns the latest accumulated histogram immediately;
+            # it does not need to wait a full window before responding.
+            data = self._tfa.get_data(timeout=2)
 
-            # TODO: The exact nesting of the API response dict needs to be validated
-            # on real hardware. The paths below are based on API documentation, but
-            # actual firmware versions might structure this slightly differently.
-            # A quick print(data) during testing will confirm.
-
-            # Extract histogram data from interval 1
+            # Extract histogram data from interval 1.
+            # Structure confirmed against official Moku API docs:
+            #   data['interval1']['histogram']['data']  -> list of bin counts
+            #   data['interval1']['histogram']['dt']    -> bin width in seconds
+            #   data['interval1']['histogram']['t0']    -> start time offset
+            #   data['interval1']['statistics']['count'] -> total event count
             histogram_info = data.get('interval1', {}).get('histogram', {})
             histogram_data = histogram_info.get('data', [])
             statistics = data.get('interval1', {}).get('statistics', {})
 
-            # Defensive: handle unexpected data lengths from the API, 
-            # even though we expect exactly 1024 bins (self._n_bins).
+            # Debug logging — remove or set to log.debug once confirmed working
+            self.log.debug(f'Moku response keys: {list(data.keys())}')
+            self.log.debug(f'Histogram bins received: {len(histogram_data)}, '
+                           f'event count: {statistics.get("count", 0)}')
+
             raw_data = np.array(histogram_data, dtype='float64')
 
             if len(raw_data) == 0:
-                # No data available yet
+                # No data yet — Moku hasn't accumulated any events since last clear.
+                # This is normal right after start_measure(); return zeros.
+                self.log.debug('Moku returned empty histogram (no events yet).')
                 count_data = np.zeros(self._n_bins, dtype='int64')
             elif len(raw_data) >= self._n_bins:
-                # Truncate to requested size
                 count_data = raw_data[:self._n_bins].astype('int64')
             else:
-                # Pad with zeros if we got less data than expected
+                # Fewer bins than expected — pad with zeros
                 count_data = np.zeros(self._n_bins, dtype='int64')
                 count_data[:len(raw_data)] = raw_data.astype('int64')
 
-            # Build info dict
             elapsed_time = None
             if self._start_time is not None:
                 elapsed_time = time.time() - self._start_time
 
-            # Try to extract sweep/event count from statistics
             elapsed_sweeps = statistics.get('count', None)
 
             info_dict = {

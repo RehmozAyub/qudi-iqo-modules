@@ -405,21 +405,24 @@ class MokuFastCounter(FastCounterInterface):
             raw_data = np.array(histogram_data, dtype='float64')
 
             if len(raw_data) == 0:
-                # No data yet — Moku hasn't accumulated any events since last clear.
+                # No data yet as Moku hasn't accumulated any events since last clear.
                 # This is normal right after start_measure(); return zeros.
                 self.log.debug('Moku returned empty histogram (no events yet).')
                 count_data = np.zeros(self._n_bins, dtype='int64')
             elif len(raw_data) >= self._n_bins:
+                # Truncate to requested size
                 count_data = raw_data[:self._n_bins].astype('int64')
             else:
-                # Fewer bins than expected — pad with zeros
+                # Pad with zeros if we got less data than expected
                 count_data = np.zeros(self._n_bins, dtype='int64')
                 count_data[:len(raw_data)] = raw_data.astype('int64')
 
+            # Build info dict
             elapsed_time = None
             if self._start_time is not None:
                 elapsed_time = time.time() - self._start_time
 
+            # Try to extract sweep/event count from statistics
             elapsed_sweeps = statistics.get('count', None)
 
             info_dict = {

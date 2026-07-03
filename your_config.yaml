@@ -1,0 +1,22 @@
+global:
+    startup_modules: ["pulser_dummy", "sequence_generator_logic", "qiskit_bridge_logic"]
+    remote_modules_server:
+        address: 'localhost'
+        port: 12345
+    namespace_server_port: 18861
+    force_remote_calls_by_value: True
+
+logic:
+    sequence_generator_logic:
+        allow_remote: True
+        module.Class: 'pulsed.sequence_generator_logic.SequenceGeneratorLogic'
+        connect:
+            pulsegenerator: 'pulser_dummy'
+
+    qiskit_bridge_logic:
+        allow_remote: True
+        module.Class: 'pulsed.qiskit_bridge.QiskitBridgeLogic'
+
+hardware:
+    pulser_dummy:
+        module.Class: 'dummy.pulser_dummy.PulserDummy'

@@ -42,21 +42,26 @@ class PulseTimelineWidget(pg.GraphicsLayoutWidget):
         super().__init__(*args, **kwargs)
         self.laser_plot = self.addPlot(row=0, col=0)
         self.mw_plot = self.addPlot(row=1, col=0)
-        for plot, label in ((self.laser_plot, 'Laser'), (self.mw_plot, 'Microwave')):
+        # The gates last tens of nanoseconds inside a repetition of several microseconds, so they
+        # get a third panel that shows only the gate window.
+        self.gate_plot = self.addPlot(row=2, col=0)
+        for plot, label in ((self.laser_plot, 'Laser'), (self.mw_plot, 'Microwave'), (self.gate_plot, 'Gates (zoom)')):
             plot.setLabel('left', label)
             plot.setMouseEnabled(x=True, y=False)
             plot.setYRange(-0.05, 1.15)
             plot.showGrid(x=True, y=True, alpha=0.2)
         self.mw_plot.setLabel('bottom', 'Time', units='s')
+        self.gate_plot.setLabel('bottom', 'Time', units='s')
         self.mw_plot.setXLink(self.laser_plot)
         self.laser_plot.getAxis('bottom').setStyle(showValues=False)
 
+        mw_pen = pg.mkPen(palette.c3, width=1)
+        mw_brush = pg.mkBrush(*palette.c3.getRgb()[:3], 100)
         self.laser_curve = self.laser_plot.plot(
             pen=pg.mkPen(palette.c1, width=1), fillLevel=0.0, brush=pg.mkBrush(*palette.c1.getRgb()[:3], 100)
         )
-        self.mw_curve = self.mw_plot.plot(
-            pen=pg.mkPen(palette.c3, width=1), fillLevel=0.0, brush=pg.mkBrush(*palette.c3.getRgb()[:3], 100)
-        )
+        self.mw_curve = self.mw_plot.plot(pen=mw_pen, fillLevel=0.0, brush=mw_brush)
+        self.gate_curve = self.gate_plot.plot(pen=mw_pen, fillLevel=0.0, brush=mw_brush)
 
     def set_elements(self, elements):
         """
@@ -65,10 +70,11 @@ class PulseTimelineWidget(pg.GraphicsLayoutWidget):
         @param list elements: dicts with 'duration', 'laser', 'mw' and 'envelope' entries
         """
         if not elements:
-            self.laser_curve.setData(x=[], y=[])
-            self.mw_curve.setData(x=[], y=[])
+            for curve in (self.laser_curve, self.mw_curve, self.gate_curve):
+                curve.setData(x=[], y=[])
             return
         laser_x, laser_y, mw_x, mw_y = list(), list(), list(), list()
+        gate_start, gate_stop = None, None
         time = 0.0
         for element in elements:
             start, stop = time, time + float(element['duration'])
@@ -78,6 +84,8 @@ class PulseTimelineWidget(pg.GraphicsLayoutWidget):
             if element['mw'] and envelope:
                 mw_x += [start] + list(np.linspace(start, stop, len(envelope))) + [stop]
                 mw_y += [0.0] + [float(value) for value in envelope] + [0.0]
+                gate_start = start if gate_start is None else gate_start
+                gate_stop = stop
             else:
                 mw_x += [start, stop]
                 mw_y += [0.0, 0.0]
@@ -85,6 +93,13 @@ class PulseTimelineWidget(pg.GraphicsLayoutWidget):
         self.laser_curve.setData(x=laser_x, y=laser_y)
         self.mw_curve.setData(x=mw_x, y=mw_y)
         self.laser_plot.setXRange(0.0, time, padding=0.02)
+        if gate_start is None:
+            self.gate_curve.setData(x=[], y=[])
+            self.gate_plot.setXRange(0.0, time, padding=0.02)
+        else:
+            self.gate_curve.setData(x=mw_x, y=mw_y)
+            margin = max(0.1 * (gate_stop - gate_start), 5e-9)
+            self.gate_plot.setXRange(max(0.0, gate_start - margin), gate_stop + margin, padding=0.0)
 
 
 class QiskitPulsedMainWindow(QtWidgets.QMainWindow):

@@ -51,6 +51,26 @@ from qudi.util.yaml_helpers import dataclass_representer, pulse_envelope_constru
 SafeRepresenter.add_multi_representer(PulseEnvelope, dataclass_representer)
 SafeConstructor.add_constructor("!PulseEnvelope", pulse_envelope_constructor)
 
+# Global parameters describing the channel usage and common parameters used during pulsed object
+# generation for predefined methods. Parameters missing from status variables saved by an older
+# version are filled in from here on activation.
+DEFAULT_GENERATION_PARAMETERS = {
+    'laser_channel': 'd_ch1',
+    'sync_channel': '',
+    'gate_channel': '',
+    'microwave_channel': 'a_ch1',
+    'microwave_frequency': 2.87e9,
+    'microwave_amplitude': 0.0,
+    'rabi_period': 100e-9,
+    'laser_length': 3e-6,
+    'laser_delay': 500e-9,
+    'wait_time': 1e-6,
+    'analog_trigger_voltage': 0.0,
+    'optimal_control_assets_path': 'C:\\Software\\qudi_data\\optimal_control_assets',
+    'pulse_envelope': PulseEnvelope(PulseEnvelopeType.rectangle),
+    'pulse_envelope_order': 1,
+}
+
 
 class SequenceGeneratorLogic(LogicBase):
     """
@@ -98,25 +118,8 @@ class SequenceGeneratorLogic(LogicBase):
 
     # status vars
     # Global parameters describing the channel usage and common parameters used during pulsed object
-    # generation for predefined methods.
-    _generation_parameters = StatusVar(
-        default={
-            'laser_channel': 'd_ch1',
-            'sync_channel': '',
-            'gate_channel': '',
-            'microwave_channel': 'a_ch1',
-            'microwave_frequency': 2.87e9,
-            'microwave_amplitude': 0.0,
-            'rabi_period': 100e-9,
-            'laser_length': 3e-6,
-            'laser_delay': 500e-9,
-            'wait_time': 1e-6,
-            'analog_trigger_voltage': 0.0,
-            'optimal_control_assets_path': 'C:\\Software\\qudi_data\\optimal_control_assets',
-            'pulse_envelope': PulseEnvelope(PulseEnvelopeType.rectangle),
-            'pulse_envelope_order': 1,
-        }
-    )
+    # generation for predefined methods. See DEFAULT_GENERATION_PARAMETERS.
+    _generation_parameters = StatusVar(default=copy.deepcopy(DEFAULT_GENERATION_PARAMETERS))
 
     # The created pulse objects (PulseBlock, PulseBlockEnsemble, PulseSequence) are saved in
     # these dictionaries. The keys are the names.
@@ -177,6 +180,12 @@ class SequenceGeneratorLogic(LogicBase):
         """Initialisation performed during activation of the module."""
         if not os.path.exists(self._assets_storage_dir):
             os.makedirs(self._assets_storage_dir)
+
+        # Generation parameters introduced after the status variables were saved get their defaults
+        for name, value in DEFAULT_GENERATION_PARAMETERS.items():
+            if name not in self._generation_parameters:
+                self.log.info(f'Adding missing generation parameter "{name}" with its default value.')
+                self._generation_parameters[name] = copy.deepcopy(value)
 
         # additional import paths for generator modules
         self._predefined_path_list = list()

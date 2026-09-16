@@ -15,6 +15,7 @@
 - Fix discovery of `AltPlotMethodBase` subclasses
 - Fix NI IO for only analog input channels.
 - bug fixes for millennia eV laser
+- Fixed activation of `SequenceGeneratorLogic` with generation parameters saved by an older version: parameters added since (e.g. `pulse_envelope`) now get their default values instead of raising `KeyError`
 
 ### New Features
 - Added hardware file `hardware.ni_x_series.ni_x_series_counter` to use NI 63xx cards as fastcounters for pulsed measurements.
@@ -25,6 +26,9 @@
 - Added `gaussian unrestricted` and `maximum` optimization methods to `ScanningOptimizeLogic`
 - Supported pyvisa for coherent obis laser
 - Added Magnet Toolchain
+- Added the `gaussian` pulse envelope (`PulseEnvelopeType.gaussian`, `SinEnvelopeGaussian`) to the pulse shaping of the `pulsed` tool chain
+- Added `QiskitPredefinedGenerator` with the `qiskit_compiler` module to compile single-qubit Qiskit circuits (ready-made templates, a gate string or Python source) into pulse block ensembles, with `rz` as a virtual phase shift and area matching for shaped envelopes. Requires the optional `qiskit` dependency (`pip install qudi-iqo-modules[qiskit]`)
+- Added `QiskitPulsedLogic` and `QiskitPulsedGui` (`qudi.gui.qiskit_pulsed`) to pick, edit, preview, generate, load and play Qiskit circuits on the pulse generator from a dedicated window
 
 ### Other
 - Displaying Qudi logs in the test workflow upon test failure

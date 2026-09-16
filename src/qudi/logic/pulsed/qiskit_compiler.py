@@ -152,8 +152,10 @@ class CompiledCircuit:
 
     @property
     def drawing(self) -> str:
-        # The encoding is given explicitly, otherwise qiskit warns about the console encoding on Windows.
-        return str(self.circuit.draw(output='text', encoding='utf-8'))
+        drawing = self.circuit.draw(output='text')
+        # Force UTF-8, otherwise the drawer falls back to the console encoding and warns on Windows.
+        drawing.encoding = 'utf-8'
+        return str(drawing)
 
     @property
     def gate_count(self) -> int:

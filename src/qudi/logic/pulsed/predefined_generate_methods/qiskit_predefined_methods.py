@@ -243,7 +243,9 @@ class QiskitPredefinedGenerator(PredefinedGeneratorBase):
         @param float area_factor: mean envelope height from envelope_area_factor
         @return tuple(float, float): factor applied to every pulse length, peak amplitude in V
         """
-        area_match = area_match if isinstance(area_match, AreaMatch) else AreaMatch(str(area_match))
+        if not isinstance(area_match, AreaMatch):
+            # also accepts the name of a member and remote proxies of a member
+            area_match = AreaMatch(str(getattr(area_match, 'value', area_match)))
         amplitude = self.microwave_amplitude
         duration_scale = 1.0
         if area_match == AreaMatch.duration:

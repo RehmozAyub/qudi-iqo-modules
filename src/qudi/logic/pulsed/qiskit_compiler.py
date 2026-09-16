@@ -152,7 +152,8 @@ class CompiledCircuit:
 
     @property
     def drawing(self) -> str:
-        return str(self.circuit.draw(output='text'))
+        # The encoding is given explicitly, otherwise qiskit warns about the console encoding on Windows.
+        return str(self.circuit.draw(output='text', encoding='utf-8'))
 
     @property
     def gate_count(self) -> int:
@@ -273,13 +274,14 @@ def circuit_from_python_source(source: str):
 
 
 def _single_qubit_gate(gate) -> SingleQubitGate:
-    """Accept a SingleQubitGate member, its name or its value."""
+    """Accept a SingleQubitGate member (also as a remote proxy), its name or its value."""
     if isinstance(gate, SingleQubitGate):
         return gate
+    text = str(getattr(gate, 'value', gate))
     try:
-        return SingleQubitGate[str(gate)]
+        return SingleQubitGate[text]
     except KeyError:
-        return SingleQubitGate(str(gate))
+        return SingleQubitGate(text)
 
 
 def build_template_circuit(template: str, parameters: Mapping[str, Any]):

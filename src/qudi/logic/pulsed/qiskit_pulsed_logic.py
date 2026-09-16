@@ -42,9 +42,10 @@ from qudi.logic.pulsed.qiskit_compiler import (
     build_template_circuit,
     compile_circuit,
 )
-from qudi.logic.pulsed.sampling_functions import PulseEnvelope
+from qudi.logic.pulsed.sampling_functions import PulseEnvelope, PulseEnvelopeType
 from qudi.logic.pulsed.sequence_generator_logic import SequenceGeneratorLogic
 from qudi.util.mutex import Mutex
+from qudi.util.network import netobtain
 
 # Generate methods of the sequence generator that belong to this toolchain start with this prefix.
 TEMPLATE_PREFIX = 'qiskit_'
@@ -217,7 +218,8 @@ class QiskitPulsedLogic(LogicBase):
         @param dict parameters: template parameters
         @return dict: 'ok', 'error', 'drawing', 'gates', 'pulses' (list of dicts) and 'frame_phase'
         """
-        parameters = dict(parameters or dict())
+        template = str(template)
+        parameters = self._local_parameters(parameters)
         result = {'ok': False, 'error': '', 'drawing': '', 'gates': 0, 'pulses': list(), 'frame_phase': 0.0}
         try:
             compiled = compile_circuit(build_template_circuit(template[len(TEMPLATE_PREFIX) :], parameters))
@@ -249,7 +251,8 @@ class QiskitPulsedLogic(LogicBase):
     @property
     def pulse_envelope(self) -> PulseEnvelope:
         """The pulse envelope selected in the generation parameters."""
-        return self.generation_parameters['pulse_envelope']
+        envelope = self.generation_parameters.get('pulse_envelope')
+        return PulseEnvelope(PulseEnvelopeType.rectangle) if envelope is None else envelope
 
     @property
     def pulse_shape_summary(self) -> Dict[str, Any]:
@@ -260,30 +263,34 @@ class QiskitPulsedLogic(LogicBase):
                       rectangular pi pulse, microwave frequency, amplitude, full scale, Rabi period
         """
         parameters = self.generation_parameters
-        envelope = parameters['pulse_envelope']
+        envelope = self.pulse_envelope
         generator = self._qiskit_generator()
-        area_factor = generator.envelope_area_factor() if generator is not None else 1.0
+        area_factor = generator.envelope_area_factor(envelope) if generator is not None else 1.0
         full_scale = generator.microwave_full_scale if generator is not None else None
+        rabi_period = float(parameters.get('rabi_period', 0.0))
         return {
             'envelope': envelope.type.name,
             'parameters': dict(envelope.parameters),
             'area_factor': area_factor,
             'duration_scale': 1.0 / area_factor,
-            'pi_pulse_length': parameters['rabi_period'] / 2,
-            'rabi_period': parameters['rabi_period'],
-            'microwave_frequency': parameters['microwave_frequency'],
-            'microwave_amplitude': parameters['microwave_amplitude'],
+            'pi_pulse_length': rabi_period / 2,
+            'rabi_period': rabi_period,
+            'microwave_frequency': float(parameters.get('microwave_frequency', 0.0)),
+            'microwave_amplitude': float(parameters.get('microwave_amplitude', 0.0)),
             'full_scale': full_scale,
         }
 
     @QtCore.Slot(object)
-    def set_pulse_envelope(self, envelope: PulseEnvelope) -> None:
+    def set_pulse_envelope(self, envelope) -> None:
         """
         Select the pulse envelope in the generation parameters. The order of a parabola or sin^n
         envelope is stored alongside, as the pulsed measurement GUI does.
 
-        @param PulseEnvelope envelope: the envelope to use for every microwave pulse
+        @param PulseEnvelope envelope: the envelope to use for every microwave pulse. A remote proxy,
+                                       the name of an envelope type or a dict with 'type' and
+                                       'parameters' entries are accepted as well.
         """
+        envelope = self._local_envelope(envelope)
         parameters = {'pulse_envelope': envelope}
         if 'order' in envelope.parameters:
             parameters['pulse_envelope_order'] = envelope.parameters['order']
@@ -296,7 +303,10 @@ class QiskitPulsedLogic(LogicBase):
 
         @param dict parameters: parameter name -> value
         """
-        self.sigGenerationParametersChanged.emit(dict(parameters))
+        parameters = self._local_parameters(parameters)
+        if 'pulse_envelope' in parameters:
+            parameters['pulse_envelope'] = self._local_envelope(parameters['pulse_envelope'])
+        self.sigGenerationParametersChanged.emit(parameters)
 
     # -------------------------------------------------------------------------- generation --------
 
@@ -326,10 +336,11 @@ class QiskitPulsedLogic(LogicBase):
             if self._is_busy():
                 self.log.error('Generation, sampling or loading of a previous asset is still in progress.')
                 return
+            template = str(template)
             if template not in self.templates:
                 self.log.error(f'Unknown template "{template}". Available: {", ".join(self.templates)}')
                 return
-            parameters = dict(parameters or dict())
+            parameters = self._local_parameters(parameters)
             self._remember_inputs(template, parameters)
             self._selected_template = str(template)
             preview = self.preview(template, parameters)
@@ -517,10 +528,10 @@ class QiskitPulsedLogic(LogicBase):
                 key: (value.name if isinstance(value, Enum) else value)
                 for key, value in ensemble.generation_method_parameters.items()
             },
-            'envelope': parameters['pulse_envelope'].type.name,
-            'rabi_period': parameters['rabi_period'],
-            'microwave_frequency': parameters['microwave_frequency'],
-            'microwave_amplitude': parameters['microwave_amplitude'],
+            'envelope': self.pulse_envelope.type.name,
+            'rabi_period': float(parameters.get('rabi_period', 0.0)),
+            'microwave_frequency': float(parameters.get('microwave_frequency', 0.0)),
+            'microwave_amplitude': float(parameters.get('microwave_amplitude', 0.0)),
         }
         if asset_name == self._current_asset and self._current_preview:
             summary['drawing'] = self._current_preview['drawing']
@@ -574,6 +585,39 @@ class QiskitPulsedLogic(LogicBase):
             if name.startswith(TEMPLATE_PREFIX):
                 return getattr(method, '__self__', None)
         return None
+
+    @staticmethod
+    def _local_parameters(parameters: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+        """Copy a parameter mapping into a local dict, fetching remote proxies by value."""
+        if not parameters:
+            return dict()
+        return {str(key): netobtain(value) for key, value in dict(parameters).items()}
+
+    @staticmethod
+    def _local_envelope(envelope) -> PulseEnvelope:
+        """
+        Rebuild a PulseEnvelope from a local object, a remote proxy of one, an envelope type name or
+        a dict with 'type' and 'parameters' entries, so that comparisons with PulseEnvelopeType work.
+        """
+        # Remote proxies pass isinstance checks against the local class, so fetch them by value first
+        # and only trust the exact local type.
+        envelope = netobtain(envelope)
+        if type(envelope) is PulseEnvelope:
+            return envelope
+        if isinstance(envelope, Mapping):
+            envelope_type, parameters = envelope['type'], envelope.get('parameters', dict())
+        elif isinstance(envelope, str):
+            envelope_type, parameters = envelope, dict()
+        else:
+            envelope_type = getattr(envelope, 'type', envelope)
+            parameters = getattr(envelope, 'parameters', dict())
+        text = str(getattr(envelope_type, 'value', envelope_type))
+        try:
+            local_type = PulseEnvelopeType(text)
+        except ValueError:
+            local_type = PulseEnvelopeType[text]
+        local_parameters = {str(key): netobtain(value) for key, value in dict(parameters).items()}
+        return PulseEnvelope(local_type, local_parameters) if local_parameters else PulseEnvelope(local_type)
 
     def _remember_inputs(self, template: str, parameters: Mapping[str, Any]) -> None:
         """Keep the free-form circuit inputs, so they are offered again next time."""

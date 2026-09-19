@@ -29,6 +29,11 @@ Qiskit is an optional dependency:
 
 or simply `python -m pip install qiskit`.
 
+A VISA based pulse generator such as the Tektronix AWG70000 additionally needs a VISA backend in
+the Python environment: either a vendor installation (NI-VISA, Tektronix TekVISA) or the pure
+Python fallback `python -m pip install pyvisa-py`. Without one the hardware module fails to
+activate with "Could not locate a VISA implementation".
+
 
 # Example config
 

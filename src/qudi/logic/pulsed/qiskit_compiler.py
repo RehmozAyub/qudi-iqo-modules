@@ -214,6 +214,23 @@ def parse_angle(expression: str) -> float:
     return float(np.radians(value) if degrees else value)
 
 
+def _split_gate_string(text: str) -> List[str]:
+    """Split a gate string at semicolons, line breaks and commas outside of brackets."""
+    tokens, current, depth = list(), list(), 0
+    for character in str(text):
+        if character == '(':
+            depth += 1
+        elif character == ')':
+            depth = max(0, depth - 1)
+        if character in ';\n' or (character == ',' and depth == 0):
+            tokens.append(''.join(current))
+            current = list()
+        else:
+            current.append(character)
+    tokens.append(''.join(current))
+    return [token.strip() for token in tokens if token.strip()]
+
+
 def circuit_from_gate_string(text: str):
     """
     Build a single-qubit circuit from a gate string.
@@ -227,7 +244,7 @@ def circuit_from_gate_string(text: str):
     @return qiskit.QuantumCircuit: the circuit
     """
     QuantumCircuit = _qiskit().QuantumCircuit
-    tokens = [token.strip() for token in re.split(r'[;,\n]+', str(text)) if token.strip()]
+    tokens = _split_gate_string(text)
     if not tokens:
         raise ValueError('The gate string is empty.')
     circuit = QuantumCircuit(1)

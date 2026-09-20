@@ -151,6 +151,14 @@ def test_gate_string_rejects_invalid_input(text):
         circuit_from_gate_string(text)
 
 
+def test_gate_string_names_the_unsupported_gate():
+    """
+    Tests that a two-qubit gate is reported by name, not split at the comma inside its brackets.
+    """
+    with pytest.raises(ValueError, match='Gate "cx" is not supported'):
+        circuit_from_gate_string('h; cx(0,1)')
+
+
 @pytest.mark.parametrize('source', [DEFAULT_PYTHON_CIRCUIT, DEFAULT_PYTHON_CIRCUIT_ONE_LINE])
 def test_default_python_sources_build_the_ramsey_circuit(source):
     """

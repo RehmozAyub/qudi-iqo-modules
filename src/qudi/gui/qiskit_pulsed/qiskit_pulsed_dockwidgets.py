@@ -46,6 +46,15 @@ def monospace_font() -> QtGui.QFont:
     return font
 
 
+def section_label(text: str) -> QtWidgets.QLabel:
+    """A bold label used as a section heading inside a form layout."""
+    label = QtWidgets.QLabel(text)
+    font = label.font()
+    font.setBold(True)
+    label.setFont(font)
+    return label
+
+
 class ParameterFormWidget(QtWidgets.QWidget):
     """
     A form built at runtime from the parameters of a generate method, in the same way the pulsed
@@ -269,16 +278,15 @@ class PulseShapeDockWidget(AdvancedDockWidget):
 
         envelope_layout = QtWidgets.QFormLayout()
         envelope_layout.setContentsMargins(1, 1, 1, 1)
+        envelope_layout.addRow(section_label('Envelope'))
         envelope_layout.addRow('Envelope:', self.envelope_combobox)
         envelope_layout.addRow('Order:', self.order_spinbox)
         envelope_layout.addRow('Truncation:', self.n_sigma_spinbox)
         envelope_layout.addRow('Lifted:', self.lifted_checkbox)
         self._envelope_layout = envelope_layout
-        self._order_row = 1
-        self._n_sigma_row = 2
-        self._lifted_row = 3
-        envelope_group = QtWidgets.QGroupBox('Envelope')
-        envelope_group.setLayout(envelope_layout)
+        self._order_row = 2
+        self._n_sigma_row = 3
+        self._lifted_row = 4
 
         # microwave parameters, shared with the pulsed measurement GUI
         self.frequency_spinbox = ScienDSpinBox()
@@ -299,11 +307,10 @@ class PulseShapeDockWidget(AdvancedDockWidget):
 
         microwave_layout = QtWidgets.QFormLayout()
         microwave_layout.setContentsMargins(1, 1, 1, 1)
+        microwave_layout.addRow(section_label('Microwave (generation parameters)'))
         microwave_layout.addRow('Frequency:', self.frequency_spinbox)
         microwave_layout.addRow('Amplitude:', self.amplitude_spinbox)
         microwave_layout.addRow('Rabi period:', self.rabi_period_spinbox)
-        microwave_group = QtWidgets.QGroupBox('Microwave (generation parameters)')
-        microwave_group.setLayout(microwave_layout)
 
         # derived values
         self.area_factor_label = QtWidgets.QLabel('-')
@@ -312,18 +319,18 @@ class PulseShapeDockWidget(AdvancedDockWidget):
         self.full_scale_label = QtWidgets.QLabel('-')
         readout_layout = QtWidgets.QFormLayout()
         readout_layout.setContentsMargins(1, 1, 1, 1)
+        readout_layout.addRow(section_label('Resulting pulses'))
         readout_layout.addRow('Area factor:', self.area_factor_label)
         readout_layout.addRow('Duration scale:', self.duration_scale_label)
         readout_layout.addRow('pi pulse:', self.pi_pulse_label)
         readout_layout.addRow('Full scale:', self.full_scale_label)
-        readout_group = QtWidgets.QGroupBox('Resulting pulses')
-        readout_group.setLayout(readout_layout)
 
         layout = QtWidgets.QVBoxLayout()
         layout.setContentsMargins(1, 1, 1, 1)
-        layout.addWidget(envelope_group)
-        layout.addWidget(microwave_group)
-        layout.addWidget(readout_group)
+        layout.setSpacing(12)
+        layout.addLayout(envelope_layout)
+        layout.addLayout(microwave_layout)
+        layout.addLayout(readout_layout)
         layout.addStretch()
         main_widget = QtWidgets.QWidget()
         main_widget.setLayout(layout)

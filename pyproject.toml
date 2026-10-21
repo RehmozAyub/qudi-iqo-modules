@@ -82,7 +82,7 @@ Changelog = "https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/docs/changelo
 version = {file = "VERSION"}
 
 [project.optional-dependencies]
-dev-test = ["pytest", "pytest-qt>=4.4.0", "coverage"]
+dev-test = ["pytest", "pytest-qt>=4.4.0", "coverage", "qiskit>=1.0"]
 dev-lint-format = ["ruff>=0.7.0",]
 qiskit = ["qiskit>=1.0"]
 

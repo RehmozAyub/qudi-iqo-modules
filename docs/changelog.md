@@ -30,6 +30,9 @@
 - Added `gaussian unrestricted` and `maximum` optimization methods to `ScanningOptimizeLogic`
 - Supported pyvisa for coherent obis laser
 - Added Magnet Toolchain
+- Added the `gaussian` pulse envelope (`PulseEnvelopeType.gaussian`, `SinEnvelopeGaussian`) to the pulse shaping of the `pulsed` tool chain
+- Added `QiskitPredefinedGenerator` with the `qiskit_compiler` module to compile single-qubit Qiskit circuits (ready-made templates, a gate string or Python source) into pulse block ensembles, with `rz` as a virtual phase shift and area matching for shaped envelopes. Requires the optional `qiskit` dependency (`pip install qudi-iqo-modules[qiskit]`)
+- Added `QiskitPulsedLogic` and `QiskitPulsedGui` (`qudi.gui.qiskit_pulsed`) to pick, edit, preview, generate, load and play Qiskit circuits on the pulse generator from a dedicated window
 
 ### Other
 - Disabled workflow triggers on a draft PR
